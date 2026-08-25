@@ -12,10 +12,64 @@ No es obligatorio usar este esqueleto ni Python: puede implementar su
 propia herramienta desde cero, en el lenguaje que prefiera, siempre que
 respete el mismo contrato (ver especificación, sección "Modo de operación").
 """
+import re
 import sys
 
-SOPORTADAS = ["add", "sub", "and", "or", "addi", "andi",
-              "lw", "lb", "sw", "sb", "beq", "bne"]
+# Formatos de instrucción soportados (RV32I).
+FORMAT_R = "R"
+FORMAT_I = "I"
+FORMAT_S = "S"
+FORMAT_B = "B"
+
+# Tabla de codificación de las 12 instrucciones soportadas: opcode, funct3
+# y funct7 (cuando aplica) según el formato de cada una.
+#
+# Fuente: Andrew Waterman and Krste Asanović, "The RISC-V Instruction Set
+# Manual, Volume I: User-Level ISA", Document Version 20191213, RISC-V
+# Foundation, 2019 — Capítulo 2 (RV32I Base Integer Instruction Set),
+# específicamente las Figuras: 
+# 2.1: RISC-V base unprivileged integer register state. (para numero de registros)
+# 2.3: RISC-V base instruction formats showing immediate variants. (para la estructura de los formatos R/I/S/B)
+#
+INSTR_TABLE = {
+    # --- Formato R: aritmética registro-registro (opcode = 0110011) ---
+    "add": {"format": FORMAT_R, "opcode": 0b0110011, "funct3": 0b000, "funct7": 0b0000000},
+    "sub": {"format": FORMAT_R, "opcode": 0b0110011, "funct3": 0b000, "funct7": 0b0100000},
+    "and": {"format": FORMAT_R, "opcode": 0b0110011, "funct3": 0b111, "funct7": 0b0000000},
+    "or":  {"format": FORMAT_R, "opcode": 0b0110011, "funct3": 0b110, "funct7": 0b0000000},
+
+    # --- Formato I: aritmética con inmediato (opcode = 0010011) ---
+    "addi": {"format": FORMAT_I, "opcode": 0b0010011, "funct3": 0b000},
+    "andi": {"format": FORMAT_I, "opcode": 0b0010011, "funct3": 0b111},
+
+    # --- Formato I: carga desde memoria (opcode = 0000011) ---
+    "lw": {"format": FORMAT_I, "opcode": 0b0000011, "funct3": 0b010},
+    "lb": {"format": FORMAT_I, "opcode": 0b0000011, "funct3": 0b000},
+
+    # --- Formato S: almacenamiento en memoria (opcode = 0100011) ---
+    "sw": {"format": FORMAT_S, "opcode": 0b0100011, "funct3": 0b010},
+    "sb": {"format": FORMAT_S, "opcode": 0b0100011, "funct3": 0b000},
+
+    # --- Formato B: salto condicional (opcode = 1100011) ---
+    "beq": {"format": FORMAT_B, "opcode": 0b1100011, "funct3": 0b000},
+    "bne": {"format": FORMAT_B, "opcode": 0b1100011, "funct3": 0b001},
+}
+
+SOPORTADAS = list(INSTR_TABLE.keys())
+
+
+def parse_register(token: str) -> int:
+    """
+    Parsea un operando de registro en formato 'xN' (p. ej. 'x5') y retorna
+    su número de registro como entero (0-31).
+
+    Lanza ValueError si el token no tiene la forma 'xN' con N en [0, 31].
+    """
+    token = token.strip()
+    match = re.fullmatch(r"x(\d{1,2})", token)
+    if match is None or not (0 <= int(match.group(1)) <= 31):
+        raise ValueError(f"Registro inválido: '{token}' (se esperaba x0-x31)")
+    return int(match.group(1))
 
 
 def encode_instruction(instruction: str) -> int:
