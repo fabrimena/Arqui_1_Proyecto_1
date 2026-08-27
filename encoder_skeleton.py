@@ -72,6 +72,82 @@ def parse_register(token: str) -> int:
     return int(match.group(1))
 
 
+# Rango del inmediato admitido por cada formato:
+#   I y S: campo de 12 bits con signo             -> [-2048, 2047]
+#   B:     campo de 13 bits con signo, bit 0 = 0  -> [-4096, 4094], solo pares
+IMM_RANGES = {
+    FORMAT_I: (-2048, 2047),
+    FORMAT_S: (-2048, 2047),
+    FORMAT_B: (-4096, 4094),
+}
+
+
+def parse_immediate(token: str) -> int:
+    """
+    Parsea un inmediato entero. Acepta decimal con o sin signo ('-12', '8')
+    y notación con prefijo ('0x1f', '0b1010').
+    """
+    token = token.strip()
+    try:
+        # base 0 hace que Python autodetecte el prefijo (0x, 0b, 0o) o decimal.
+        return int(token, 0)
+    except ValueError:
+        pass
+    try:
+        # Reintento en decimal para casos como '-012', que base 0 rechaza.
+        return int(token, 10)
+    except ValueError:
+        raise ValueError(
+            f"Inmediato inválido: '{token}' (se esperaba un entero decimal o 0x...)"
+        )
+
+
+def check_immediate(imm: int, fmt: str) -> None:
+    """
+    Valida que el inmediato quepa en el campo del formato indicado.
+
+    Para el formato B se exige además que el desplazamiento sea par: el bit 0
+    del inmediato no se codifica, porque los saltos son múltiplos de 2 bytes.
+    """
+    low, high = IMM_RANGES[fmt]
+    if not (low <= imm <= high):
+        raise ValueError(
+            f"Inmediato {imm} fuera del rango [{low}, {high}] del formato {fmt}"
+        )
+    if fmt == FORMAT_B and imm % 2 != 0:
+        raise ValueError(
+            f"El desplazamiento de salto {imm} debe ser par (múltiplo de 2 bytes)"
+        )
+
+
+def parse_mem_operand(token: str) -> tuple:
+    """
+    Parsea la sintaxis 'offset(registro)' de las instrucciones de memoria
+    (p. ej. '8(x6)' o '-4(x2)') y retorna la tupla (inmediato, registro).
+    """
+    match = re.fullmatch(r"(-?\w+)\s*\(\s*(x\d{1,2})\s*\)", token.strip())
+    if match is None:
+        raise ValueError(
+            f"Operando de memoria inválido: '{token}' (se esperaba 'offset(xN)')"
+        )
+    return parse_immediate(match.group(1)), parse_register(match.group(2))
+
+
+def split_instruction(instruction: str) -> tuple:
+    """
+    Separa el texto de la instrucción en (mnemónico, lista de operandos).
+
+    Las comas se tratan como espacios, de modo que 'add x5,x6,x7' y
+    'add x5, x6, x7' producen el mismo resultado. No se rompe la sintaxis
+    'offset(reg)' porque esta nunca contiene comas.
+    """
+    text = instruction.strip().lower()
+    if not text:
+        raise ValueError("Instrucción vacía")
+    tokens = text.replace(",", " ").split()
+    return tokens[0], tokens[1:]
+
+
 def encode_instruction(instruction: str) -> int:
     """
     Recibe una instrucción como texto, p. ej. "add x5, x6, x7", y debe
