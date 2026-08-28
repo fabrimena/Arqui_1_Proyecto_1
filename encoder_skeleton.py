@@ -209,6 +209,33 @@ def encode_i(info: dict, operands: list, is_load: bool) -> int:
     )
 
 
+def encode_s(info: dict, operands: list) -> int:
+    """
+    Ensambla una instrucción de formato S: 'sw rs2, offset(rs1)'.
+
+    El inmediato de 12 bits viaja partido en dos trozos (Figura 2.2):
+        imm[11:5] -> [31:25] | rs2[24:20] | rs1[19:15] | funct3[14:12]
+        imm[4:0]  -> [11:7]  | opcode[6:0]
+    """
+    if len(operands) != 2:
+        raise ValueError("El formato S espera 2 operandos: rs2, offset(rs1)")
+
+    rs2 = parse_register(operands[0])
+    imm, rs1 = parse_mem_operand(operands[1])
+    check_immediate(imm, FORMAT_S)
+
+    imm12 = imm & 0xFFF          # inmediato en complemento a 2 de 12 bits
+
+    return (
+        ((imm12 >> 5) << 25)     # imm[11:5] -> bits 31:25
+        | (rs2 << 20)
+        | (rs1 << 15)
+        | (info["funct3"] << 12)
+        | ((imm12 & 0x1F) << 7)  # imm[4:0] -> bits 11:7
+        | info["opcode"]
+    )
+
+
 def encode_instruction(instruction: str) -> int:
     """
     Recibe una instrucción como texto, p. ej. "add x5, x6, x7", y retorna su
@@ -232,6 +259,8 @@ def encode_instruction(instruction: str) -> int:
         return encode_r(info, operands)
     if fmt == FORMAT_I:
         return encode_i(info, operands, is_load=mnemonic in LOAD_INSTRS)
+    if fmt == FORMAT_S:
+        return encode_s(info, operands)
 
     raise NotImplementedError(f"Formato {fmt}: pendiente de implementar")
 
