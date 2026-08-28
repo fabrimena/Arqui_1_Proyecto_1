@@ -57,6 +57,11 @@ INSTR_TABLE = {
 
 SOPORTADAS = list(INSTR_TABLE.keys())
 
+# Instrucciones de formato I cuya sintaxis de operandos es 'rd, offset(rs1)'
+# en lugar de 'rd, rs1, imm'.
+LOAD_INSTRS = {"lw", "lb"}
+
+
 
 def parse_register(token: str) -> int:
     """
@@ -172,6 +177,38 @@ def encode_r(info: dict, operands: list) -> int:
     )
 
 
+def encode_i(info: dict, operands: list, is_load: bool) -> int:
+    """
+    Ensambla una instrucción de formato I. Dos sintaxis posibles:
+        aritmética : 'addi rd, rs1, imm'
+        carga      : 'lw rd, offset(rs1)'
+
+    Disposición de campos (manual RISC-V, Figura 2.2):
+        imm[11:0] -> [31:20] | rs1[19:15] | funct3[14:12] | rd[11:7] | opcode[6:0]
+    """
+    if is_load:
+        if len(operands) != 2:
+            raise ValueError("Una carga espera 2 operandos: rd, offset(rs1)")
+        rd = parse_register(operands[0])
+        imm, rs1 = parse_mem_operand(operands[1])
+    else:
+        if len(operands) != 3:
+            raise ValueError("El formato I espera 3 operandos: rd, rs1, imm")
+        rd = parse_register(operands[0])
+        rs1 = parse_register(operands[1])
+        imm = parse_immediate(operands[2])
+
+    check_immediate(imm, FORMAT_I)
+
+    return (
+        ((imm & 0xFFF) << 20)      # complemento a 2 truncado a los 12 bits del campo
+        | (rs1 << 15)
+        | (info["funct3"] << 12)
+        | (rd << 7)
+        | info["opcode"]
+    )
+
+
 def encode_instruction(instruction: str) -> int:
     """
     Recibe una instrucción como texto, p. ej. "add x5, x6, x7", y retorna su
@@ -193,6 +230,8 @@ def encode_instruction(instruction: str) -> int:
 
     if fmt == FORMAT_R:
         return encode_r(info, operands)
+    if fmt == FORMAT_I:
+        return encode_i(info, operands, is_load=mnemonic in LOAD_INSTRS)
 
     raise NotImplementedError(f"Formato {fmt}: pendiente de implementar")
 
