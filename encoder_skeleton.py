@@ -148,20 +148,53 @@ def split_instruction(instruction: str) -> tuple:
     return tokens[0], tokens[1:]
 
 
+def encode_r(info: dict, operands: list) -> int:
+    """
+    Ensambla una instrucción de formato R: 'mnemonico rd, rs1, rs2'.
+
+    Disposición de campos (manual RISC-V, Figura 2.2):
+        funct7[31:25] | rs2[24:20] | rs1[19:15] | funct3[14:12] | rd[11:7] | opcode[6:0]
+    """
+    if len(operands) != 3:
+        raise ValueError("El formato R espera 3 operandos: rd, rs1, rs2")
+
+    rd = parse_register(operands[0])
+    rs1 = parse_register(operands[1])
+    rs2 = parse_register(operands[2])
+
+    return (
+        (info["funct7"] << 25)
+        | (rs2 << 20)
+        | (rs1 << 15)
+        | (info["funct3"] << 12)
+        | (rd << 7)
+        | info["opcode"]
+    )
+
+
 def encode_instruction(instruction: str) -> int:
     """
-    Recibe una instrucción como texto, p. ej. "add x5, x6, x7", y debe
-    retornar su codificación de 32 bits como entero (0 <= valor < 2**32).
+    Recibe una instrucción como texto, p. ej. "add x5, x6, x7", y retorna su
+    codificación de 32 bits como entero (0 <= valor < 2**32).
 
-    Debe soportar únicamente las instrucciones en SOPORTADAS. Los valores
-    de opcode/funct3/funct7 de cada una NO se proveen aquí: deben
-    investigarse en el manual oficial de la ISA RISC-V (ver referencia en
-    la especificación) y documentarse en el README.
+    El mnemónico se busca en INSTR_TABLE y el ensamblado se delega a la
+    función correspondiente al formato de esa instrucción.
     """
-    # TODO: implementar. Sugerencia: parsear el mnemónico y los operandos,
-    # despachar según el formato (R/I/S/B), y ensamblar los campos con
-    # operaciones de bits.
-    raise NotImplementedError("encode_instruction: pendiente de implementar")
+    mnemonic, operands = split_instruction(instruction)
+
+    if mnemonic not in INSTR_TABLE:
+        raise ValueError(
+            f"Instrucción no soportada: '{mnemonic}'. "
+            f"Soportadas: {', '.join(SOPORTADAS)}"
+        )
+
+    info = INSTR_TABLE[mnemonic]
+    fmt = info["format"]
+
+    if fmt == FORMAT_R:
+        return encode_r(info, operands)
+
+    raise NotImplementedError(f"Formato {fmt}: pendiente de implementar")
 
 
 def explain_instruction(instruction: str, word: int) -> str:
@@ -184,10 +217,17 @@ def main():
         sys.exit(2)
 
     instruction = sys.argv[1]
-    word = encode_instruction(instruction) & 0xFFFFFFFF
 
-    print(explain_instruction(instruction, word))
+    # Se calculan codificación y explicación antes de imprimir nada, para que
+    # un error de sintaxis no deje una salida a medias.
+    try:
+        word = encode_instruction(instruction) & 0xFFFFFFFF
+        explicacion = explain_instruction(instruction, word)
+    except (ValueError, NotImplementedError) as error:
+        print(f"Error: {error}", file=sys.stderr)
+        sys.exit(1)
 
+    print(explicacion)
     # No modificar el formato de la siguiente línea: la especificación la
     # requiere, literal, para permitir la validación automática.
     print(f"HEX: 0x{word:08x}")
