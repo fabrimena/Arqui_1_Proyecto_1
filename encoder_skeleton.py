@@ -236,6 +236,38 @@ def encode_s(info: dict, operands: list) -> int:
     )
 
 
+def encode_b(info: dict, operands: list) -> int:
+    """
+    Ensambla una instrucción de formato B: 'beq rs1, rs2, offset'.
+
+    El desplazamiento se codifica en múltiplos de 2 bytes: el bit 0 es
+    implícito (vale 0) y los 12 bits restantes quedan dispersos por la
+    palabra (Figuras 2.3 y 2.4 del manual):
+        imm[12] -> 31 | imm[10:5] -> 30:25 | rs2 -> 24:20 | rs1 -> 19:15
+        funct3  -> 14:12 | imm[4:1] -> 11:8 | imm[11] -> 7 | opcode -> 6:0
+    """
+    if len(operands) != 3:
+        raise ValueError("El formato B espera 3 operandos: rs1, rs2, offset")
+
+    rs1 = parse_register(operands[0])
+    rs2 = parse_register(operands[1])
+    imm = parse_immediate(operands[2])
+    check_immediate(imm, FORMAT_B)
+
+    imm13 = imm & 0x1FFF         # desplazamiento en complemento a 2 de 13 bits
+
+    return (
+        (((imm13 >> 12) & 0x1) << 31)    # imm[12]: bit de signo, siempre en inst[31]
+        | (((imm13 >> 5) & 0x3F) << 25)  # imm[10:5]
+        | (rs2 << 20)
+        | (rs1 << 15)
+        | (info["funct3"] << 12)
+        | (((imm13 >> 1) & 0xF) << 8)    # imm[4:1]
+        | (((imm13 >> 11) & 0x1) << 7)   # imm[11], en la posición que S usa para imm[0]
+        | info["opcode"]
+    )
+
+
 def encode_instruction(instruction: str) -> int:
     """
     Recibe una instrucción como texto, p. ej. "add x5, x6, x7", y retorna su
@@ -261,7 +293,8 @@ def encode_instruction(instruction: str) -> int:
         return encode_i(info, operands, is_load=mnemonic in LOAD_INSTRS)
     if fmt == FORMAT_S:
         return encode_s(info, operands)
-
+    if fmt == FORMAT_B:
+        return encode_b(info, operands)
     raise NotImplementedError(f"Formato {fmt}: pendiente de implementar")
 
 
