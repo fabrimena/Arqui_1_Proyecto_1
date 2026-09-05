@@ -298,16 +298,7 @@ def encode_instruction(instruction: str) -> int:
     raise NotImplementedError(f"Formato {fmt}: pendiente de implementar")
 
 
-def explain_instruction(instruction: str, word: int) -> str:
-    """
-    Debe retornar un texto (para imprimirse en pantalla) que muestre, de
-    forma visual, los 32 bits de 'word' divididos en los campos del
-    formato correspondiente (R, I, S o B) — indicando el rango de bits y
-    el valor de cada campo — junto con una breve explicación de cada uno.
-    El formato visual (colores, tabla, arte ASCII, etc.) queda a su
-    criterio, siempre que sea claro.
-    """
-    # Nombre del grupo de opcodes al que pertenece cada instrucción, según el mapa
+# Nombre del grupo de opcodes al que pertenece cada instrucción, según el mapa
 # de opcodes base del manual RISC-V (Tabla 24.1, "RISC-V base opcode map").
 OPCODE_NAMES = {
     0b0110011: "OP (aritmética/lógica registro-registro)",
